@@ -13,7 +13,7 @@ npm test                            # build + tests with coverage (80% threshold
 npm run lint                        # ESLint + Prettier + tsc --noEmit + knip + markdownlint
 ```
 
-The package is **ESM-only**: relative imports need explicit `.js` extensions. It needs Node ≥ 22.13 for `node:sqlite`.
+The package is **ESM-only**: relative imports need explicit `.js` extensions. It needs Node ≥ 26 (current LTS; uses the built-in `node:sqlite`).
 
 ## Architecture
 
