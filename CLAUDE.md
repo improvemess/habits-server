@@ -32,7 +32,7 @@ The package is **ESM-only**: relative imports need explicit `.js` extensions. It
 
 ### End-to-end encryption
 
-The server never sees the share key and never decrypts anything. `meta` and entry `data` are opaque base64url strings. Only ids, `date`, `updatedAt` and server timestamps are plain text. Never add features that would need the content.
+The server never sees the share key and never decrypts anything. `meta` and entry `data` are opaque strings: a version prefix such as `v1.` followed by base64url (see oliverlorenz/uhabits#30). Only ids, `date`, `updatedAt` and server timestamps are plain text. Never add features that would need the content.
 
 ### Sync semantics
 

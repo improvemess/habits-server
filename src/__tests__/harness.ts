@@ -64,7 +64,7 @@ export async function createOwner(app: Application): Promise<Owner> {
 export async function createShare(
   app: Application,
   owner: Owner,
-  meta = 'bWV0YQ',
+  meta = 'v1.bWV0YQ',
 ): Promise<string> {
   const res = await request(app)
     .post('/api/v1/shares')

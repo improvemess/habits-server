@@ -9,7 +9,7 @@ const EXAMPLE_OWNER_ID = '5b0c3c1e-8a5f-4d7e-9a3b-2f1c6d7e8f90';
 const EXAMPLE_DEVICE_ID = 'c2a7e5d4-1b3f-4e6a-8d9c-0f1e2d3c4b5a';
 const EXAMPLE_SHARE_ID = '9f8e7d6c-5b4a-4f3e-a2d1-c0b9a8f7e6d5';
 const EXAMPLE_READER_ID = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
-const EXAMPLE_CIPHERTEXT = 'AQx1b3A2c2VjcmV0Lg…';
+const EXAMPLE_CIPHERTEXT = 'v1.ZGVmZ2hpamtsbW5vMzmtEhidM7wEQAatiUcXHAwFBpyee1zycXEIv-c16g';
 
 const uuidV4 = z
   .string()
@@ -25,16 +25,18 @@ const ownerSecret = z
 const timestamp = z.iso.datetime({ offset: true });
 
 /**
- * Opaque ciphertext produced by the app (AES-256-GCM, versioned wire format,
- * see oliverlorenz/uhabits#30), encoded as base64url without padding. The
- * server never decrypts it and never sees the key.
+ * Opaque ciphertext produced by the app (AES-256-GCM, see oliverlorenz/uhabits#30):
+ * a version prefix such as `v1.` followed by base64url without padding. The
+ * server never decrypts it and never sees the key; it only checks the shape.
  */
 const ciphertext = (maxLength: number): z.ZodString =>
   z
     .string()
     .min(1)
     .max(maxLength)
-    .regex(/^[A-Za-z0-9_-]+$/, { message: 'must be base64url without padding' });
+    .regex(/^v[0-9]+\.[A-Za-z0-9_-]+$/, {
+      message: 'must be a version prefix (e.g. `v1.`) followed by base64url without padding',
+    });
 
 const META_MAX = 16 * 1024;
 const ENTRY_MAX = 1024;
@@ -116,7 +118,7 @@ export const metaSchema = z
   .object({
     meta: ciphertext(META_MAX).meta({
       description:
-        'Encrypted master data of the habit (name, colour, frequency, …), base64url. The server stores it as is.',
+        'Encrypted master data of the habit (name, colour, frequency, …), `v1.` + base64url. The server stores it as is.',
     }),
   })
   .meta({ examples: [{ meta: EXAMPLE_CIPHERTEXT }] });
@@ -127,7 +129,9 @@ export const createdShareSchema = z
 
 const entryInputSchema = z.object({
   date: z.iso.date().meta({ description: 'Day of the entry (YYYY-MM-DD), plain text' }),
-  data: ciphertext(ENTRY_MAX).meta({ description: 'Encrypted entry (state/value), base64url' }),
+  data: ciphertext(ENTRY_MAX).meta({
+    description: 'Encrypted entry (state/value), `v1.` + base64url',
+  }),
   updatedAt: timestamp.meta({
     description: 'When the entry was last changed on the device; decides last writer wins',
   }),

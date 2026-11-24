@@ -75,7 +75,7 @@ describe('BASE_PATH', () => {
     const share = await prefixed
       .post('/habits/api/v1/shares')
       .set('Authorization', auth)
-      .send({ meta: 'YQ' })
+      .send({ meta: 'v1.YQ' })
       .expect(201);
     const invite = await prefixed
       .post(`/habits/api/v1/shares/${share.body.shareId as string}/invites`)

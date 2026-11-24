@@ -16,7 +16,7 @@ describe('shares', () => {
   it('creates a share and reads it back', async () => {
     const { app } = createHarness();
     const owner = await createOwner(app);
-    const shareId = await createShare(app, owner, 'bWV0YQ');
+    const shareId = await createShare(app, owner, 'v1.bWV0YQ');
     const res = await request(app)
       .get(`/api/v1/shares/${shareId}`)
       .set('Authorization', bearer(owner.deviceToken))
@@ -25,20 +25,51 @@ describe('shares', () => {
       shareId,
       ownerId: owner.ownerId,
       status: 'active',
-      meta: 'bWV0YQ',
+      meta: 'v1.bWV0YQ',
       entries: [],
       revision: 1,
       endedAt: null,
     });
   });
 
-  it('rejects meta that is not base64url', async () => {
+  it('accepts a payload sealed by the app', async () => {
+    // Produced by ShareCipher in oliverlorenz/uhabits (#30, #39): `v1.` + base64url.
+    const sealed = 'v1.ZGVmZ2hpamtsbW5vMzmtEhidM7wEQAatiUcXHAwFBpyee1zycXEIv-c16g';
     const { app } = createHarness();
     const owner = await createOwner(app);
+    const shareId = await createShare(app, owner, sealed);
+    const auth = bearer(owner.deviceToken);
     await request(app)
-      .post('/api/v1/shares')
+      .put(`/api/v1/shares/${shareId}/entries`)
+      .set('Authorization', auth)
+      .send({ entries: [entry('2026-11-24', sealed, '2026-11-24T19:30:00.000Z', randomUUID())] })
+      .expect(200);
+    const res = await request(app).get(`/api/v1/shares/${shareId}`).set('Authorization', auth);
+    expect(res.body.meta).toBe(sealed);
+    expect(res.body.entries[0].data).toBe(sealed);
+  });
+
+  it.each(['not base64!', 'bWV0YQ', 'v1.', 'v1.bad!', 'x1.bWV0YQ', 'v.bWV0YQ', 'v1.bW.V0'])(
+    'rejects meta %j that is not a version prefix plus base64url',
+    async (meta) => {
+      const { app } = createHarness();
+      const owner = await createOwner(app);
+      await request(app)
+        .post('/api/v1/shares')
+        .set('Authorization', bearer(owner.deviceToken))
+        .send({ meta })
+        .expect(400);
+    },
+  );
+
+  it('rejects entry data without a version prefix', async () => {
+    const { app } = createHarness();
+    const owner = await createOwner(app);
+    const shareId = await createShare(app, owner);
+    await request(app)
+      .put(`/api/v1/shares/${shareId}/entries`)
       .set('Authorization', bearer(owner.deviceToken))
-      .send({ meta: 'not base64!' })
+      .send({ entries: [entry('2026-11-24', 'YQ', '2026-11-24T19:30:00.000Z', randomUUID())] })
       .expect(400);
   });
 
@@ -49,14 +80,14 @@ describe('shares', () => {
     const put = await request(app)
       .put(`/api/v1/shares/${shareId}/meta`)
       .set('Authorization', bearer(owner.deviceToken))
-      .send({ meta: 'bmV3' })
+      .send({ meta: 'v1.bmV3' })
       .expect(200);
     expect(put.body.revision).toBe(2);
     const res = await request(app)
       .get(`/api/v1/shares/${shareId}`)
       .set('Authorization', bearer(owner.deviceToken))
       .expect(200);
-    expect(res.body.meta).toBe('bmV3');
+    expect(res.body.meta).toBe('v1.bmV3');
   });
 
   it('hides shares of other owners', async () => {
@@ -69,7 +100,7 @@ describe('shares', () => {
     await request(app)
       .put(`/api/v1/shares/${shareId}/meta`)
       .set('Authorization', auth)
-      .send({ meta: 'eA' })
+      .send({ meta: 'v1.eA' })
       .expect(404);
     await request(app).delete(`/api/v1/shares/${shareId}`).set('Authorization', auth).expect(404);
     await request(app).get(`/api/v1/shares/${randomUUID()}`).set('Authorization', auth).expect(404);
@@ -111,8 +142,8 @@ describe('entries', () => {
       .set('Authorization', auth)
       .send({
         entries: [
-          entry('2026-01-01', 'YQ', '2026-01-01T10:00:00Z', owner.deviceId),
-          entry('2025-12-31', 'Yg', '2026-01-01T10:00:00Z', owner.deviceId),
+          entry('2026-01-01', 'v1.YQ', '2026-01-01T10:00:00Z', owner.deviceId),
+          entry('2025-12-31', 'v1.Yg', '2026-01-01T10:00:00Z', owner.deviceId),
         ],
       })
       .expect(200);
@@ -125,7 +156,7 @@ describe('entries', () => {
     ]);
     expect(all.body.entries[0]).toEqual({
       date: '2025-12-31',
-      data: 'Yg',
+      data: 'v1.Yg',
       updatedAt: '2026-01-01T10:00:00.000Z',
       deviceId: owner.deviceId,
       revision: 2,
@@ -134,7 +165,7 @@ describe('entries', () => {
     await request(app)
       .put(`/api/v1/shares/${shareId}/entries`)
       .set('Authorization', auth)
-      .send({ entries: [entry('2026-01-01', 'Yw', '2026-01-01T11:00:00Z', owner.deviceId)] })
+      .send({ entries: [entry('2026-01-01', 'v1.Yw', '2026-01-01T11:00:00Z', owner.deviceId)] })
       .expect(200);
     const since = await request(app)
       .get(`/api/v1/shares/${shareId}?since=2`)
@@ -142,7 +173,7 @@ describe('entries', () => {
       .expect(200);
     expect(since.body.revision).toBe(3);
     expect(since.body.entries).toHaveLength(1);
-    expect(since.body.entries[0]).toMatchObject({ date: '2026-01-01', data: 'Yw', revision: 3 });
+    expect(since.body.entries[0]).toMatchObject({ date: '2026-01-01', data: 'v1.Yw', revision: 3 });
 
     const none = await request(app)
       .get(`/api/v1/shares/${shareId}?since=3`)
@@ -174,21 +205,25 @@ describe('entries', () => {
         .send({ entries })
         .expect(200);
 
-    await put([entry('2026-01-01', 'bmV3ZXI', '2026-01-01T10:00:00Z', owner.deviceId)]);
-    const older = await put([entry('2026-01-01', 'b2xkZXI', '2026-01-01T09:00:00Z', otherDevice)]);
+    await put([entry('2026-01-01', 'v1.bmV3ZXI', '2026-01-01T10:00:00Z', owner.deviceId)]);
+    const older = await put([
+      entry('2026-01-01', 'v1.b2xkZXI', '2026-01-01T09:00:00Z', otherDevice),
+    ]);
     expect(older.body).toEqual({ accepted: 0, ignored: 1, revision: 2 });
 
     const winnerId = [owner.deviceId, otherDevice].sort()[1]!;
     const loserId = [owner.deviceId, otherDevice].sort()[0]!;
-    await put([entry('2026-01-01', 'bG9zZXI', '2026-01-01T12:00:00Z', loserId)]);
-    const tie = await put([entry('2026-01-01', 'd2lubmVy', '2026-01-01T12:00:00Z', winnerId)]);
+    await put([entry('2026-01-01', 'v1.bG9zZXI', '2026-01-01T12:00:00Z', loserId)]);
+    const tie = await put([entry('2026-01-01', 'v1.d2lubmVy', '2026-01-01T12:00:00Z', winnerId)]);
     expect(tie.body.accepted).toBe(1);
-    const tieAgain = await put([entry('2026-01-01', 'bG9zZXI', '2026-01-01T12:00:00Z', loserId)]);
+    const tieAgain = await put([
+      entry('2026-01-01', 'v1.bG9zZXI', '2026-01-01T12:00:00Z', loserId),
+    ]);
     expect(tieAgain.body.accepted).toBe(0);
 
     const res = await request(app).get(`/api/v1/shares/${shareId}`).set('Authorization', auth);
     expect(res.body.entries).toEqual([
-      expect.objectContaining({ data: 'd2lubmVy', deviceId: winnerId }),
+      expect.objectContaining({ data: 'v1.d2lubmVy', deviceId: winnerId }),
     ]);
   });
 
@@ -202,14 +237,14 @@ describe('entries', () => {
       .set('Authorization', auth)
       .send({
         entries: [
-          entry('2026-01-01', 'Yg', '2026-01-01T11:00:00Z', owner.deviceId),
-          entry('2026-01-01', 'YQ', '2026-01-01T10:00:00Z', owner.deviceId),
+          entry('2026-01-01', 'v1.Yg', '2026-01-01T11:00:00Z', owner.deviceId),
+          entry('2026-01-01', 'v1.YQ', '2026-01-01T10:00:00Z', owner.deviceId),
         ],
       })
       .expect(200);
     expect(res.body).toEqual({ accepted: 1, ignored: 1, revision: 2 });
     const share = await request(app).get(`/api/v1/shares/${shareId}`).set('Authorization', auth);
-    expect(share.body.entries[0].data).toBe('Yg');
+    expect(share.body.entries[0].data).toBe('v1.Yg');
   });
 
   it('clamps updatedAt from the future to the server time', async () => {
@@ -220,7 +255,7 @@ describe('entries', () => {
     await request(app)
       .put(`/api/v1/shares/${shareId}/entries`)
       .set('Authorization', auth)
-      .send({ entries: [entry('2026-01-01', 'YQ', '2030-01-01T00:00:00Z', owner.deviceId)] })
+      .send({ entries: [entry('2026-01-01', 'v1.YQ', '2030-01-01T00:00:00Z', owner.deviceId)] })
       .expect(200);
     const res = await request(app).get(`/api/v1/shares/${shareId}`).set('Authorization', auth);
     expect(res.body.entries[0].updatedAt).toBe(new Date(now()).toISOString());
@@ -233,7 +268,7 @@ describe('entries', () => {
         entries: [
           {
             date: '2026-13-01',
-            data: 'YQ',
+            data: 'v1.YQ',
             updatedAt: '2026-01-01T00:00:00Z',
             deviceId: randomUUID(),
           },
@@ -243,21 +278,21 @@ describe('entries', () => {
     [
       {
         entries: [
-          { date: '2026-01-01', data: 'YQ', updatedAt: 'yesterday', deviceId: randomUUID() },
+          { date: '2026-01-01', data: 'v1.YQ', updatedAt: 'yesterday', deviceId: randomUUID() },
         ],
       },
     ],
     [
       {
         entries: [
-          { date: '2026-01-01', data: 'YQ', updatedAt: '2026-01-01T00:00:00Z', deviceId: 'x' },
+          { date: '2026-01-01', data: 'v1.YQ', updatedAt: '2026-01-01T00:00:00Z', deviceId: 'x' },
         ],
       },
     ],
     [
       {
         entries: Array.from({ length: 501 }, () =>
-          entry('2026-01-01', 'YQ', '2026-01-01T00:00:00Z', randomUUID()),
+          entry('2026-01-01', 'v1.YQ', '2026-01-01T00:00:00Z', randomUUID()),
         ),
       },
     ],
@@ -282,7 +317,7 @@ describe('ending a share', () => {
     await request(app)
       .put(`/api/v1/shares/${shareId}/entries`)
       .set('Authorization', auth)
-      .send({ entries: [entry('2026-01-01', 'YQ', '2026-01-01T10:00:00Z', owner.deviceId)] })
+      .send({ entries: [entry('2026-01-01', 'v1.YQ', '2026-01-01T10:00:00Z', owner.deviceId)] })
       .expect(200);
     const reader = await addReader(app, owner, shareId);
     await createInvite(app, owner, shareId);
@@ -315,12 +350,12 @@ describe('ending a share', () => {
     await request(app)
       .put(`/api/v1/shares/${shareId}/meta`)
       .set('Authorization', auth)
-      .send({ meta: 'YQ' })
+      .send({ meta: 'v1.YQ' })
       .expect(410);
     await request(app)
       .put(`/api/v1/shares/${shareId}/entries`)
       .set('Authorization', auth)
-      .send({ entries: [entry('2026-01-01', 'YQ', '2026-01-01T10:00:00Z', owner.deviceId)] })
+      .send({ entries: [entry('2026-01-01', 'v1.YQ', '2026-01-01T10:00:00Z', owner.deviceId)] })
       .expect(410);
     await request(app)
       .post(`/api/v1/shares/${shareId}/invites`)
@@ -408,11 +443,11 @@ describe('readers', () => {
     const reader = await addReader(app, owner, shareId);
     const auth = bearer(reader.readerToken);
     const writes = [
-      request(app).post('/api/v1/shares').send({ meta: 'YQ' }),
-      request(app).put(`/api/v1/shares/${shareId}/meta`).send({ meta: 'YQ' }),
+      request(app).post('/api/v1/shares').send({ meta: 'v1.YQ' }),
+      request(app).put(`/api/v1/shares/${shareId}/meta`).send({ meta: 'v1.YQ' }),
       request(app)
         .put(`/api/v1/shares/${shareId}/entries`)
-        .send({ entries: [entry('2026-01-01', 'YQ', '2026-01-01T10:00:00Z', randomUUID())] }),
+        .send({ entries: [entry('2026-01-01', 'v1.YQ', '2026-01-01T10:00:00Z', randomUUID())] }),
       request(app).delete(`/api/v1/shares/${shareId}`),
       request(app).post(`/api/v1/shares/${shareId}/invites`),
       request(app).get(`/api/v1/shares/${shareId}/readers`),
@@ -429,6 +464,6 @@ describe('readers', () => {
       .get(`/api/v1/shares/${shareId}`)
       .set('Authorization', bearer(owner.deviceToken))
       .expect(200);
-    expect(share.body).toMatchObject({ status: 'active', meta: 'bWV0YQ', revision: 1 });
+    expect(share.body).toMatchObject({ status: 'active', meta: 'v1.bWV0YQ', revision: 1 });
   });
 });
