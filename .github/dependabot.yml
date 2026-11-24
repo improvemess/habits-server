@@ -1,0 +1,61 @@
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore"
+    ignore:
+      # v10 requires conventional-changelog-writer@9, but semantic-release's
+      # commit-analyzer / release-notes-generator still ship writer@8, which
+      # breaks the "generateNotes" release step. Lift once they upgrade.
+      - dependency-name: "conventional-changelog-conventionalcommits"
+        update-types: ["version-update:semver-major"]
+    groups:
+      eslint:
+        patterns:
+          - "eslint*"
+          - "@eslint/*"
+          - "@typescript-eslint/*"
+          - "eslint-config-prettier"
+          - "eslint-plugin-check-file"
+          - "eslint-plugin-no-only-tests"
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+      typescript:
+        patterns:
+          - "typescript"
+          - "typescript-strict-plugin"
+          - "@types/node"
+      semantic-release:
+        patterns:
+          - "semantic-release"
+          - "@semantic-release/*"
+          - "conventional-changelog-*"
+      dev-tools:
+        patterns:
+          - "husky"
+          - "prettier"
+          - "del-cli"
+          - "globals"
+          - "tsx"
+          - "knip"
+          - "markdownlint-cli2"
+          - "markdown-link-check"
+          - "audit-ci"
+      production:
+        dependency-type: "production"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"

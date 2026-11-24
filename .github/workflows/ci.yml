@@ -1,0 +1,178 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  # Manual trigger: Dependabot auto-merges don't fire `push` workflows, so no CI
+  # (and therefore no Release via workflow_run) runs for them. Use
+  # `gh workflow run CI --ref main` to kick off CI + release manually.
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      src: ${{ github.event_name != 'pull_request' && 'true' || steps.filter.outputs.src }}
+      docs: ${{ github.event_name != 'pull_request' && 'true' || steps.filter.outputs.docs }}
+      deps: ${{ github.event_name != 'pull_request' && 'true' || steps.filter.outputs.deps }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            src:
+              - 'src/**'
+              - 'tsconfig.json'
+              - 'tsconfig.test.json'
+              - 'eslint.config.mjs'
+              - 'vitest.config.ts'
+              - 'knip.json'
+              - '.prettierrc'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.nvmrc'
+              - '.github/workflows/**'
+              - 'Dockerfile'
+              - '.dockerignore'
+            docs:
+              - '*.md'
+            deps:
+              - 'package.json'
+              - 'package-lock.json'
+
+  lint-code:
+    name: lint / ${{ matrix.linter }}
+    needs: changes
+    if: needs.changes.outputs.src == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        linter:
+          - eslint
+          - prettier
+          - types
+          - knip
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint:${{ matrix.linter }}
+
+  lint-docs:
+    name: lint / ${{ matrix.linter }}
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        linter:
+          - md
+          - links
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint:${{ matrix.linter }}
+
+  test:
+    name: Test
+    needs: [changes, lint-code]
+    if: needs.changes.outputs.src == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
+
+  docker:
+    name: Docker build
+    needs: changes
+    if: needs.changes.outputs.src == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-buildx-action@v4
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          load: true
+          tags: uhabits-server:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test
+        run: |
+          docker run -d --name smoke -p 3000:3000 uhabits-server:ci
+          for i in $(seq 1 20); do
+            curl -fsS http://localhost:3000/.well-known/uhabits-server && exit 0
+            sleep 1
+          done
+          docker logs smoke
+          exit 1
+
+  audit:
+    name: Security audit
+    needs: changes
+    if: needs.changes.outputs.deps == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint:audit
+
+  # Single required status check: path-filtered jobs above report "skipped" for
+  # PRs that don't touch their inputs, and GitHub does not treat "skipped" as
+  # satisfying a required check, which would otherwise block those PRs forever.
+  # This job always runs and only fails on a genuine failure upstream.
+  ci-gate:
+    name: CI gate
+    needs: [changes, lint-code, lint-docs, test, docker, audit]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that no required job failed
+        run: |
+          for result in \
+            "${{ needs.changes.result }}" \
+            "${{ needs.lint-code.result }}" \
+            "${{ needs.lint-docs.result }}" \
+            "${{ needs.test.result }}" \
+            "${{ needs.docker.result }}" \
+            "${{ needs.audit.result }}"; do
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              echo "::error::A required job did not succeed (result: $result)."
+              exit 1
+            fi
+          done
+          echo "All required jobs succeeded or were skipped."
