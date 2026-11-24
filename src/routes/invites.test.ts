@@ -107,7 +107,7 @@ describe('GET /invite/{code}', () => {
   it('shows a landing page with the open-in-app script for a valid invite', async () => {
     const { app } = createHarness();
     const owner = await createOwner(app);
-    const shareId = await createShare(app, owner, 'c2VjcmV0LW5hbWU');
+    const shareId = await createShare(app, owner, 'v1.c2VjcmV0LW5hbWU');
     const code = await createInvite(app, owner, shareId);
     const res = await request(app)
       .get(`/invite/${code}`)
