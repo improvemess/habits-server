@@ -77,7 +77,7 @@ A share whose owner disappears becomes a tombstone first, so friends see "ended"
 
 ## Development
 
-Requires Node 22.13 or newer (the server uses the built-in `node:sqlite`).
+Requires Node 26 or newer (the current LTS; the server uses the built-in `node:sqlite`).
 
 ```bash
 npm install
