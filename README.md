@@ -88,3 +88,17 @@ npm run lint         # eslint, prettier, tsc, knip, markdownlint
 ```
 
 See [CLAUDE.md](CLAUDE.md) for architecture and conventions.
+
+## License
+
+Copyright (C) 2026 Oliver Lorenz
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. See [LICENSE](LICENSE).
+
+If you run a modified version of the server for others, the AGPL requires you
+to offer them its source code. The app it serves,
+[habits](https://github.com/improvemess/habits), is licensed under the GPL 3.0
+or later.
